@@ -67,7 +67,11 @@
     <section id="pane-calendar" class="section-pane">
       <article class="card" style="margin-top:10px;">
         <h2 class="font-display">Календарь тренировок</h2>
-        <p class="hint">Выбери день в ряду кнопок. Ниже отобразятся тренировки выбранного дня.</p>
+        <p class="hint">Выбери день в ленте, затем проверь доступные тренировки внизу.</p>
+        <div class="calendar-legend" aria-hidden="true">
+          <span class="legend-item"><span class="legend-dot legend-dot-schedule"></span> Есть тренировки</span>
+          <span class="legend-item"><span class="legend-dot legend-dot-empty"></span> Нет тренировок</span>
+        </div>
         <div id="schedule-calendar" class="calendar" style="margin-top:8px;"></div>
         <div id="day-schedule" class="day-panel">
           <p class="hint">Выбери день в ряду выше.</p>
@@ -80,27 +84,35 @@
         <article class="card">
           <h2 class="font-display">Купить абонемент</h2>
           <form id="buy-subscription-form" class="form">
+            <label for="membership-select" class="form-label">Тариф абонемента</label>
             <select id="membership-select" class="field" required></select>
-            <p class="hint" style="margin:0;">Аккаунт, от имени которого выполняется действие:</p>
+
+            <label for="user-select" class="form-label">Кто оформляет покупку</label>
             <select id="user-select" class="field" required></select>
-            <p class="hint" style="margin:0;">Тренер, к которому привяжется расписание:</p>
+
+            <label for="trainer-select" class="form-label">Ответственный тренер</label>
             <select id="trainer-select" class="field" required></select>
-            <label class="hint" style="display:flex; align-items:center; gap:8px;">
-              <input id="auto-book" type="checkbox" checked style="width:auto;" />
-              Сразу создать расписание и поставить клиента в группы
+
+            <label class="option-check" for="auto-book">
+              <input id="auto-book" type="checkbox" checked />
+              <span>Автоматически создать расписание и записать клиента в группы</span>
             </label>
-            <label class="hint" style="display:flex; align-items:center; gap:8px;">
-              <input id="is-paid" type="checkbox" checked style="width:auto;" />
-              Оплата полностью
+
+            <label class="option-check" for="is-paid">
+              <input id="is-paid" type="checkbox" checked />
+              <span>Оплата получена полностью</span>
             </label>
+
+            <p class="form-note">После оформления откроется календарь с созданными записями.</p>
             <button class="btn btn-accent" id="buy-btn">Оформить</button>
           </form>
-          <p id="buy-sub-msg" class="hint" style="min-height:18px; margin-top:8px;"></p>
+          <p id="buy-sub-msg" class="hint buy-sub-msg"></p>
         </article>
 
         <article class="card">
           <h2 class="font-display">Ручная запись на тренировку</h2>
           <form id="book-form" class="form">
+            <label for="schedule-select" class="form-label">Выбери слот расписания</label>
             <select id="schedule-select" class="field" required></select>
             <button class="btn btn-primary" id="book-btn">Записать клиента</button>
           </form>
@@ -303,8 +315,8 @@
 
       renderDayStrip({
         rootId: 'schedule-calendar',
-        title: 'Ряд дней',
-        subtitle: 'Темная кнопка: есть тренировка в этот день',
+        title: 'Календарь на 16 дней',
+        subtitle: 'Зеленая точка показывает день с тренировкой',
         offsetDays: calendarState.scheduleOffset,
         selectedDay: calendarState.selectedDay,
         flagsMap,

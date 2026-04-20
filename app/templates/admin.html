@@ -139,18 +139,19 @@
           datasets: [{
             label: 'Выручка',
             data: revenue.map((x) => Number(x.revenue || 0)),
-            borderColor: '#121212',
-            backgroundColor: 'rgba(18, 18, 18, 0.08)',
+            borderColor: '#0f5bd8',
+            backgroundColor: 'rgba(15, 91, 216, 0.14)',
             fill: true,
             tension: 0.3,
             pointRadius: 4,
+            pointBackgroundColor: '#0f5bd8',
           }],
         },
         options: {
           responsive: true,
           plugins: { legend: { display: false } },
           scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.06)' } },
+            y: { beginAtZero: true, grid: { color: 'rgba(15, 91, 216, 0.12)' } },
             x: { grid: { display: false } },
           },
         },
@@ -162,7 +163,7 @@
           labels: attendance.map((x) => x.category),
           datasets: [{
             data: attendance.map((x) => Number(x.attendances || 0)),
-            backgroundColor: ['#121212', '#333333', '#666666', '#999999'],
+            backgroundColor: ['#0f5bd8', '#2485e7', '#1ba975', '#74d108'],
             borderRadius: 6,
           }],
         },
@@ -170,7 +171,7 @@
           responsive: true,
           plugins: { legend: { display: false } },
           scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.06)' } },
+            y: { beginAtZero: true, grid: { color: 'rgba(15, 91, 216, 0.12)' } },
             x: { grid: { display: false } },
           },
         },

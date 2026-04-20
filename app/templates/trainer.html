@@ -61,7 +61,7 @@
     <section id="pane-trainer-calendar" class="section-pane">
       <article class="card" style="margin-top:10px;">
         <h2 class="font-display">Расписание групп</h2>
-        <p class="hint">Кнопки кликабельные: темная кнопка = есть группа в этот день.</p>
+        <p class="hint">Выбери день в ленте. Зеленая точка на кнопке означает, что в этот день есть группа.</p>
         <div id="trainer-calendar" class="calendar" style="margin-top:8px;"></div>
         <div id="trainer-day-schedule" class="day-panel">
           <p class="hint">Выбери день в ряду выше.</p>
@@ -276,8 +276,8 @@
 
       renderDayStrip({
         rootId: 'trainer-calendar',
-        title: 'Ряд дней: группы',
-        subtitle: 'Темная кнопка означает наличие группы',
+        title: 'Календарь групп на 16 дней',
+        subtitle: 'Зеленая точка означает, что в этот день есть группа',
         offsetDays: trainerCalendarState.offset,
         selectedDay: trainerCalendarState.selectedDay,
         flagsMap,

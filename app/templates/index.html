@@ -3,55 +3,117 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pulse - Платформа управления</title>
+  <title>Pulse - Платформа управления клубом</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/pulse.css" />
+  <style>
+    /* Локальные стили лендинга, палитра берется из глобальной темы */
+    .landing-hero {
+      text-align: center;
+      padding: 60px 20px;
+      margin-bottom: 24px;
+      background: var(--bg-deep);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line);
+    }
+    .landing-hero h1 {
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      margin: 0 0 16px;
+      color: var(--text);
+    }
+    .landing-hero p {
+      font-size: 1.1rem;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 32px;
+      line-height: 1.5;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .demo-card {
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .demo-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+    }
+    .demo-card .role-badge {
+      display: inline-flex;
+      background: var(--surface-soft);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .demo-card h3 {
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+    .demo-card code {
+      background: var(--bg-deep);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--primary);
+      display: block;
+      margin-top: 12px;
+      font-family: monospace;
+    }
+  </style>
 </head>
 <body class="pulse-app">
-  <main class="page-shell" style="max-width: 1180px;">
-    <header class="topbar" style="margin-bottom: 14px;">
-      <div class="title-block">
-        <h1 class="font-display">Pulse: платформа управления клубом</h1>
-        <p>Единый контур для клиентов, тренеров и админки. Фокус на расписании, дисциплине и данных.</p>
-      </div>
-      <div class="toolbar">
-        <a href="/login" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center;">Войти в систему</a>
-      </div>
-    </header>
-
+  <main class="page-shell" style="max-width: 1024px; padding-top: 40px;">
+    
     {% if error %}
-    <section class="card" style="border-color:var(--danger); color:var(--danger); background:var(--surface-soft); margin-bottom:14px;">
-      <strong>Статус базы данных:</strong> {{ error }}
+    <section class="card" style="border-color:var(--danger); color:var(--danger); background:#fdf5f5; margin-bottom:24px;">
+      <strong>⚠️ Ошибка подключения:</strong> {{ error }}
     </section>
     {% endif %}
 
+    <header class="landing-hero">
+      <h1 class="font-display">Пульс вашего клуба</h1>
+      <p>Минималистичная и быстрая платформа. Удобное расписание для клиентов, инструменты контроля для тренеров и прозрачная аналитика для руководства.</p>
+      <a href="/login" class="btn btn-primary" style="padding: 12px 28px; font-size: 1.05rem; text-decoration: none; display: inline-flex; border-radius: 8px;">Войти в систему</a>
+    </header>
+
     <section class="grid grid-kpi">
-      <article class="card"><p class="kpi-label">Клиенты</p><p class="kpi-value">{{ totals.clients_count or 0 }}</p></article>
-      <article class="card"><p class="kpi-label">Активные подписки</p><p class="kpi-value">{{ totals.active_subscriptions or 0 }}</p></article>
-      <article class="card"><p class="kpi-label">Брони</p><p class="kpi-value">{{ totals.pending_bookings or 0 }}</p></article>
-      <article class="card"><p class="kpi-label">Посещения</p><p class="kpi-value">{{ totals.attended_visits or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Зарегистрировано клиентов</p><p class="kpi-value">{{ totals.clients_count or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Активные абонементы</p><p class="kpi-value">{{ totals.active_subscriptions or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Записей на тренировки</p><p class="kpi-value">{{ totals.pending_bookings or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Успешных посещений</p><p class="kpi-value">{{ totals.attended_visits or 0 }}</p></article>
     </section>
 
-    <section class="two-col" style="margin-top: 14px; align-items:start;">
-      <article class="card">
-        <h2 class="font-display">Что внутри</h2>
-        <div class="list">
-          <div class="item"><p class="item-title">Роли и права</p><p class="item-sub">Разделение доступа по ролям: клиент, тренер, администратор.</p></div>
-          <div class="item"><p class="item-title">Операции в реальном времени</p><p class="item-sub">Покупка абонемента, автозапись в группы, check-in и транзакции.</p></div>
-          <div class="item"><p class="item-title">Наглядная аналитика</p><p class="item-sub">KPI, графики, SQL-view explorer и экспорт данных в CSV.</p></div>
-        </div>
-      </article>
-      <article class="card">
-        <h2 class="font-display">Демо-доступ</h2>
-        <div class="list">
-          <div class="item"><p class="item-title">Админ</p><p class="item-sub">+77011110004 / 0004</p></div>
-          <div class="item"><p class="item-title">Тренер</p><p class="item-sub">+77011110001 / 0001</p></div>
-          <div class="item"><p class="item-title">Клиент</p><p class="item-sub">+77022220001 / 0001</p></div>
-        </div>
-      </article>
+    <h2 class="font-display" style="margin: 40px 0 16px; font-size: 1.5rem; text-align: center;">Демонстрационные доступы</h2>
+    <section class="demo-grid">
+      <div class="demo-card">
+        <div class="role-badge">Клиент</div>
+        <p class="hint" style="margin:0; min-height: 48px;">Покупка абонемента, запись в группы, история тренировок</p>
+        <code>+77022220001 / 0001</code>
+      </div>
+      <div class="demo-card">
+        <div class="role-badge">Тренер</div>
+        <p class="hint" style="margin:0; min-height: 48px;">Просмотр расписания, отметка присутствия (check-in)</p>
+        <code>+77011110001 / 0001</code>
+      </div>
+      <div class="demo-card">
+        <div class="role-badge">Администратор</div>
+        <p class="hint" style="margin:0; min-height: 48px;">KPI, аналитика, финансы и управление бизнес-процессами</p>
+        <code>+77011110004 / 0004</code>
+      </div>
     </section>
+
   </main>
 </body>
 </html>
