@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse - Вход</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/pulse.css" />
+</head>
+<body class="pulse-app">
+  <main class="page-shell" style="max-width: 1040px;">
+    <section class="card" style="padding: 0; overflow: hidden; border-radius: 28px;">
+      <div class="two-col" style="gap: 0;">
+        <div class="hero-card" style="padding: 38px; border-right:1px solid var(--line);">
+          <p class="badge">Pulse Core</p>
+          <h1 class="font-display" style="font-size: clamp(1.8rem, 2.8vw, 2.8rem); margin: 14px 0 10px;">Контроль доступа</h1>
+          <p style="line-height: 1.6; margin: 0; max-width: 440px;">Один вход для всех ролей. Система сразу переводит пользователя в соответствующий рабочий кабинет.</p>
+          <div class="list" style="margin-top: 20px;">
+            <div class="item">
+              <p class="item-title">Клиент</p>
+              <p class="item-sub">Телефон: +77022220001, пароль: 0001</p>
+            </div>
+            <div class="item">
+              <p class="item-title">Тренер</p>
+              <p class="item-sub">Телефон: +77011110001, пароль: 0001</p>
+            </div>
+            <div class="item">
+              <p class="item-title">Админ</p>
+              <p class="item-sub">Телефон: +77011110004, пароль: 0004</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding: 38px;">
+          <p class="hint" style="margin-top: 0;">Вход по роли</p>
+          <h2 class="font-display" style="margin: 0 0 8px; font-size: 1.8rem;">Вход в продукт</h2>
+          <p class="hint" style="margin: 0 0 20px;">Пароль в демо-режиме: последние 4 цифры телефона.</p>
+
+          <form id="login-form" class="form">
+            <input id="phone" class="field" placeholder="Телефон, например +77011110004" required />
+            <input id="password" type="password" class="field" placeholder="Пароль" required />
+            <button class="btn btn-primary" id="login-btn">Войти</button>
+          </form>
+          <p id="msg" style="min-height: 22px; margin: 12px 0 0; color: var(--danger); font-size: 0.9rem;"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('login-btn');
+      msg.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Входим...';
+
+      const phone = document.getElementById('phone').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, password })
+        });
+
+        if (!r.ok) {
+          msg.textContent = 'Неверный телефон или пароль';
+          return;
+        }
+
+        const data = await r.json();
+        window.location.href = data.redirect_to || '/';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Войти';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -4,3 +4,4 @@ psycopg[binary]
 jinja2
 sqladmin
 python-dotenv
+itsdangerous

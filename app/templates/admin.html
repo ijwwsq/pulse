@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse - Админ-панель</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/pulse.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="pulse-app">
+  <main class="page-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1 class="font-display">Админ-панель Pulse</h1>
+        <p>{{ user.full_name if user else '' }} · стратегия, финансы, нагрузка и качество процессов</p>
+      </div>
+      <div class="toolbar">
+        <button id="refresh-btn" class="btn btn-primary">Обновить метрики</button>
+        <button id="export-btn" class="btn btn-accent">Экспорт CSV</button>
+        <button id="logout-btn" class="btn btn-ghost">Выход</button>
+      </div>
+    </header>
+
+    {% if error %}
+    <section class="card" style="border-color:var(--danger); color:var(--danger); margin-top:14px;">
+      <strong>Ошибка подключения:</strong> {{ error }}
+    </section>
+    {% endif %}
+
+    <section class="grid grid-kpi" style="margin-top:14px;">
+      <article class="card"><p class="kpi-label">Клиенты</p><p class="kpi-value" id="k-clients">{{ metrics.kpis.clients_total or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Тренеры</p><p class="kpi-value" id="k-trainers">{{ metrics.kpis.trainers_total or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Активные абонементы</p><p class="kpi-value" id="k-subs">{{ metrics.kpis.active_subscriptions or 0 }}</p></article>
+      <article class="card"><p class="kpi-label">Выручка</p><p class="kpi-value" id="k-revenue">{{ metrics.kpis.total_revenue or 0 }}</p></article>
+    </section>
+
+    <section class="two-col" style="margin-top:14px; align-items:start;">
+      <article class="card">
+        <h2 class="font-display">Динамика выручки</h2>
+        <canvas id="revenueChart" height="120"></canvas>
+      </article>
+      <article class="card">
+        <h2 class="font-display">Посещаемость по категориям</h2>
+        <canvas id="attendanceChart" height="120"></canvas>
+      </article>
+    </section>
+
+    <section class="two-col" style="margin-top:14px; align-items:start;">
+      <article class="card">
+        <h2 class="font-display">Наглядные индикаторы</h2>
+        <div class="list">
+          <div class="item">
+            <p class="item-title">Активность клиентской базы</p>
+            <div class="progress-line" style="margin-top:8px;"><span id="p-active-base" style="width:0%"></span></div>
+            <p class="hint" id="p-active-base-text" style="margin-top:6px;">0%</p>
+          </div>
+          <div class="item">
+            <p class="item-title">Нагрузка на тренерский штаб</p>
+            <div class="progress-line" style="margin-top:8px;"><span id="p-trainer-load" style="width:0%"></span></div>
+            <p class="hint" id="p-trainer-load-text" style="margin-top:6px;">0%</p>
+          </div>
+        </div>
+      </article>
+      <article class="card">
+        <h2 class="font-display">Сводка по аналитике</h2>
+        <div id="quick-summary" class="list"></div>
+      </article>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; margin-bottom:10px; align-items:center;">
+        <h2 class="font-display" style="margin:0;">Просмотр SQL-представлений</h2>
+        <div class="toolbar" style="gap:8px;">
+          <select id="view-select" class="field" style="min-width:260px;">
+            {% for view_name in analytics_views %}
+            <option value="{{ view_name }}">{{ view_name }}</option>
+            {% endfor %}
+          </select>
+          <input id="search-input" class="field" placeholder="Поиск в таблице" style="min-width:220px;" />
+          <button id="load-view-btn" class="btn btn-primary">Загрузить</button>
+        </div>
+      </div>
+      <div class="hint" id="view-meta" style="margin-bottom:10px;">Выберите представление и загрузите данные</div>
+      <div class="table-wrap">
+        <table id="view-table"></table>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-stack" class="toast-stack"></div>
+
+  <script src="/static/pulse.js"></script>
+  <script>
+    let revenueChart;
+    let attendanceChart;
+    let activeRows = [];
+
+    function fillKpi(metrics) {
+      const k = metrics.kpis || {};
+      document.getElementById('k-clients').textContent = k.clients_total ?? 0;
+      document.getElementById('k-trainers').textContent = k.trainers_total ?? 0;
+      document.getElementById('k-subs').textContent = k.active_subscriptions ?? 0;
+      document.getElementById('k-revenue').textContent = pulseMoney(k.total_revenue || 0);
+
+      const clients = Number(k.clients_total || 0);
+      const subs = Number(k.active_subscriptions || 0);
+      const trainers = Number(k.trainers_total || 1);
+      const activeBase = clients ? Math.round((subs / clients) * 100) : 0;
+      const trainerLoad = trainers ? Math.round((subs / trainers) * 10) : 0;
+
+      document.getElementById('p-active-base').style.width = `${Math.min(activeBase, 100)}%`;
+      document.getElementById('p-active-base-text').textContent = `${activeBase}% клиентов с активным абонементом`;
+
+      document.getElementById('p-trainer-load').style.width = `${Math.min(trainerLoad, 100)}%`;
+      document.getElementById('p-trainer-load-text').textContent = `${trainerLoad}% условной загрузки`;
+
+      document.getElementById('quick-summary').innerHTML = `
+        <div class="item"><p class="item-title">Текущая оценка</p><p class="item-sub">${activeBase >= 60 ? 'Сильная конверсия абонементов' : 'Есть потенциал роста по подпискам'}</p></div>
+        <div class="item"><p class="item-title">Тренерский ресурс</p><p class="item-sub">${trainerLoad >= 80 ? 'Высокая нагрузка, стоит расширять сетку' : 'Нагрузка в рабочем диапазоне'}</p></div>
+      `;
+    }
+
+    function drawCharts(metrics) {
+      const revenue = metrics.monthly_revenue || [];
+      const attendance = metrics.attendance_by_category || [];
+      const revCtx = document.getElementById('revenueChart').getContext('2d');
+      const attCtx = document.getElementById('attendanceChart').getContext('2d');
+
+      if (revenueChart) revenueChart.destroy();
+      if (attendanceChart) attendanceChart.destroy();
+
+      revenueChart = new Chart(revCtx, {
+        type: 'line',
+        data: {
+          labels: revenue.map((x) => x.month),
+          datasets: [{
+            label: 'Выручка',
+            data: revenue.map((x) => Number(x.revenue || 0)),
+            borderColor: '#121212',
+            backgroundColor: 'rgba(18, 18, 18, 0.08)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.06)' } },
+            x: { grid: { display: false } },
+          },
+        },
+      });
+
+      attendanceChart = new Chart(attCtx, {
+        type: 'bar',
+        data: {
+          labels: attendance.map((x) => x.category),
+          datasets: [{
+            data: attendance.map((x) => Number(x.attendances || 0)),
+            backgroundColor: ['#121212', '#333333', '#666666', '#999999'],
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.06)' } },
+            x: { grid: { display: false } },
+          },
+        },
+      });
+    }
+
+    async function refreshMetrics() {
+      const metrics = await pulseApi('/api/admin/metrics');
+      fillKpi(metrics);
+      drawCharts(metrics);
+      pulseToast('Метрики обновлены');
+    }
+
+    function filterRows(rows, q) {
+      const query = q.trim().toLowerCase();
+      if (!query) return rows;
+      return rows.filter((row) =>
+        Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(query))
+      );
+    }
+
+    async function loadView() {
+      const viewName = document.getElementById('view-select').value;
+      const data = await pulseApi(`/api/analytics/${viewName}?limit=500`);
+      activeRows = data.rows || [];
+      const filtered = filterRows(activeRows, document.getElementById('search-input').value || '');
+      pulseRenderTable('view-table', filtered);
+      document.getElementById('view-meta').textContent = `View: ${viewName} | строк: ${filtered.length} из ${activeRows.length}`;
+      pulseToast(`View ${viewName} загружен`);
+    }
+
+    function exportCurrentRows() {
+      if (!activeRows.length) {
+        pulseToast('Нет данных для выгрузки', true);
+        return;
+      }
+      const rows = filterRows(activeRows, document.getElementById('search-input').value || '');
+      if (!rows.length) {
+        pulseToast('После фильтрации нет строк', true);
+        return;
+      }
+      const cols = Object.keys(rows[0]);
+      const csv = [
+        cols.join(','),
+        ...rows.map((row) => cols.map((c) => `"${String(row[c] ?? '').replaceAll('"', '""')}"`).join(',')),
+      ].join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pulse_${document.getElementById('view-select').value}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      pulseToast('CSV выгружен');
+    }
+
+    (async () => {
+      const initialMetrics = {
+        monthly_revenue: {{ metrics.monthly_revenue | tojson }},
+        attendance_by_category: {{ metrics.attendance_by_category | tojson }},
+        kpis: {{ metrics.kpis | tojson }},
+      };
+      drawCharts(initialMetrics);
+      fillKpi(initialMetrics);
+
+      await loadView();
+
+      document.getElementById('refresh-btn').addEventListener('click', async () => {
+        try {
+          await refreshMetrics();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('load-view-btn').addEventListener('click', async () => {
+        try {
+          await loadView();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('search-input').addEventListener('input', () => {
+        const filtered = filterRows(activeRows, document.getElementById('search-input').value || '');
+        pulseRenderTable('view-table', filtered);
+        const viewName = document.getElementById('view-select').value;
+        document.getElementById('view-meta').textContent = `View: ${viewName} | строк: ${filtered.length} из ${activeRows.length}`;
+      });
+
+      document.getElementById('export-btn').addEventListener('click', exportCurrentRows);
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await pulseApi('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+    })().catch((err) => pulseToast(err.message, true));
+  </script>
+</body>
+</html>

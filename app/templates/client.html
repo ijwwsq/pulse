@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse - Кабинет клиента</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/pulse.css" />
+</head>
+<body class="pulse-app mobile-app">
+  <main class="page-shell mobile-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1 class="font-display">Кабинет клиента</h1>
+        <p>{{ user.full_name if user else '' }} · дисциплина, прогресс, расписание</p>
+      </div>
+      <div class="toolbar">
+        <button id="refresh-btn" class="btn btn-primary">Обновить</button>
+        <button id="logout-btn" class="btn btn-ghost">Выход</button>
+      </div>
+    </header>
+
+    {% if error %}
+    <section class="card" style="border-color:var(--danger); color:var(--danger); background:var(--surface-soft); margin-top:12px;">
+      <strong>Ошибка подключения:</strong> {{ error }}
+    </section>
+    {% endif %}
+
+    <section class="three-col" style="margin-top:12px;">
+      <article class="card"><p class="kpi-label">Посещений</p><p class="kpi-value" id="st-attended">0</p></article>
+      <article class="card"><p class="kpi-label">Броней</p><p class="kpi-value" id="st-booked">0</p></article>
+      <article class="card"><p class="kpi-label">No-show</p><p class="kpi-value" id="st-noshow">0</p></article>
+    </section>
+
+    <section class="tabbar">
+      <button class="tab-btn active" data-pane="pane-overview">Обзор</button>
+      <button class="tab-btn" data-pane="pane-calendar">Календарь</button>
+      <button class="tab-btn" data-pane="pane-actions">Операции</button>
+    </section>
+
+    <section id="pane-overview" class="section-pane active">
+      <div class="two-col" style="align-items:start; margin-top:10px;">
+        <div class="grid">
+          <article class="card">
+            <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px;">
+              <h2 class="font-display">Профиль</h2>
+              <select id="client-select" class="field" style="max-width:220px;"></select>
+            </div>
+            <div id="profile" class="list"></div>
+          </article>
+
+          <article class="card">
+            <h2 class="font-display">Активный абонемент</h2>
+            <div id="subscription"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <h2 class="font-display">Ближайшие тренировки</h2>
+          <div id="sessions" class="timeline"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="pane-calendar" class="section-pane">
+      <article class="card" style="margin-top:10px;">
+        <h2 class="font-display">Календарь тренировок</h2>
+        <p class="hint">Выбери день в ряду кнопок. Ниже отобразятся тренировки выбранного дня.</p>
+        <div id="schedule-calendar" class="calendar" style="margin-top:8px;"></div>
+        <div id="day-schedule" class="day-panel">
+          <p class="hint">Выбери день в ряду выше.</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="pane-actions" class="section-pane">
+      <div class="two-col" style="align-items:start; margin-top:10px;">
+        <article class="card">
+          <h2 class="font-display">Купить абонемент</h2>
+          <form id="buy-subscription-form" class="form">
+            <select id="membership-select" class="field" required></select>
+            <p class="hint" style="margin:0;">Аккаунт, от имени которого выполняется действие:</p>
+            <select id="user-select" class="field" required></select>
+            <p class="hint" style="margin:0;">Тренер, к которому привяжется расписание:</p>
+            <select id="trainer-select" class="field" required></select>
+            <label class="hint" style="display:flex; align-items:center; gap:8px;">
+              <input id="auto-book" type="checkbox" checked style="width:auto;" />
+              Сразу создать расписание и поставить клиента в группы
+            </label>
+            <label class="hint" style="display:flex; align-items:center; gap:8px;">
+              <input id="is-paid" type="checkbox" checked style="width:auto;" />
+              Оплата полностью
+            </label>
+            <button class="btn btn-accent" id="buy-btn">Оформить</button>
+          </form>
+          <p id="buy-sub-msg" class="hint" style="min-height:18px; margin-top:8px;"></p>
+        </article>
+
+        <article class="card">
+          <h2 class="font-display">Ручная запись на тренировку</h2>
+          <form id="book-form" class="form">
+            <select id="schedule-select" class="field" required></select>
+            <button class="btn btn-primary" id="book-btn">Записать клиента</button>
+          </form>
+          <p class="hint" style="margin-top:8px;">Показываются только будущие слоты.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-stack" class="toast-stack"></div>
+
+  <script src="/static/pulse.js"></script>
+  <script>
+    const initialClientId = "{{ initial_client_id or '' }}";
+    let selectedClientId = initialClientId;
+    let calendarScheduleRows = [];
+
+    function toIsoDay(value) {
+      const d = new Date(value);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    const todayIso = toIsoDay(new Date());
+    const calendarState = {
+      selectedDay: todayIso,
+      scheduleOffset: 0,
+    };
+
+    function setActivePane(paneId) {
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.pane === paneId);
+      });
+      document.querySelectorAll('.section-pane').forEach((pane) => {
+        pane.classList.toggle('active', pane.id === paneId);
+      });
+    }
+
+    function addDays(baseDate, days) {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + days);
+      return d;
+    }
+
+    function buildRollingDays(offsetDays, count = 16) {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() + offsetDays);
+      const days = [];
+      for (let i = 0; i < count; i += 1) {
+        const current = addDays(start, i);
+        days.push({
+          iso: toIsoDay(current),
+          dayNumber: current.getDate(),
+          weekShort: current.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '').slice(0, 2),
+        });
+      }
+      return days;
+    }
+
+    function markerByFlags(flags) {
+      if (flags.hasSchedule) return 'schedule';
+      return 'none';
+    }
+
+    function renderDayStrip({ rootId, title, subtitle, offsetDays, selectedDay, flagsMap, onShift, onSelectDay }) {
+      const root = document.getElementById(rootId);
+      const days = buildRollingDays(offsetDays);
+      root.innerHTML = `
+        <div class="strip-head">
+          <div>
+            <p class="strip-title">${title}</p>
+            <p class="strip-sub">${subtitle}</p>
+          </div>
+          <div class="strip-controls">
+            <button type="button" class="strip-nav-btn" data-shift="-1">&#x2039;</button>
+            <button type="button" class="strip-nav-btn" data-shift="1">&#x203A;</button>
+          </div>
+        </div>
+        <div class="strip-row">
+          ${days.map((day) => {
+            const marker = markerByFlags(flagsMap.get(day.iso) || {});
+            const selectedClass = day.iso === selectedDay ? 'is-selected' : '';
+            return `
+              <button type="button" class="strip-btn marker-${marker} ${selectedClass}" data-day="${day.iso}">
+                <span class="strip-week">${day.weekShort}</span>
+                <span class="strip-num">${day.dayNumber}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      root.onclick = (event) => {
+        const nav = event.target.closest('button[data-shift]');
+        if (nav) {
+          onShift(Number(nav.dataset.shift || 0));
+          return;
+        }
+        const dayBtn = event.target.closest('button.strip-btn[data-day]');
+        if (dayBtn) {
+          onSelectDay(dayBtn.dataset.day);
+        }
+      };
+    }
+
+    function renderProfile(profile) {
+      document.getElementById('profile').innerHTML = `
+        <div class="item"><p class="item-title">Имя</p><p class="item-sub">${pulseSafe(profile.full_name)}</p></div>
+        <div class="item"><p class="item-title">Телефон</p><p class="item-sub">${pulseSafe(profile.phone)}</p></div>
+        <div class="item"><p class="item-title">Email</p><p class="item-sub">${pulseSafe(profile.email)}</p></div>
+        <div class="item"><p class="item-title">Дата регистрации</p><p class="item-sub">${pulseSafe(profile.registration_date)}</p></div>
+      `;
+    }
+
+    function renderSubscription(sub) {
+      const root = document.getElementById('subscription');
+      if (!sub) {
+        root.innerHTML = '<div class="empty">Нет активного абонемента</div>';
+        return;
+      }
+      root.innerHTML = `
+        <div class="item"><p class="item-title">${pulseSafe(sub.membership_name)}</p><p class="item-sub">${pulseSafe(sub.start_date)} - ${pulseSafe(sub.end_date)}</p></div>
+        <div class="item"><p class="item-title">Осталось посещений</p><p class="item-sub">${sub.visits_left === null ? 'Безлимит' : pulseSafe(sub.visits_left)}</p></div>
+      `;
+    }
+
+    function renderSessions(rows) {
+      const root = document.getElementById('sessions');
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">Пока нет предстоящих занятий</div>';
+        return;
+      }
+      root.innerHTML = rows.map((s) => {
+        const dt = new Date(s.start_time);
+        const hh = String(dt.getHours()).padStart(2, '0');
+        const mm = String(dt.getMinutes()).padStart(2, '0');
+        return `
+          <div class="timeline-item">
+            <div class="timeline-time">${hh}:${mm}</div>
+            <div>
+              <p class="item-title">${pulseSafe(s.title)} <span class="badge">${pulseSafe(s.status)}</span></p>
+              <p class="item-sub">${pulseSafe(s.trainer_name)} · ${pulseSafe(s.start_time)}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderStats(stats) {
+      document.getElementById('st-attended').textContent = stats.total_attended ?? 0;
+      document.getElementById('st-booked').textContent = stats.total_booked ?? 0;
+      document.getElementById('st-noshow').textContent = stats.total_no_show ?? 0;
+    }
+
+    function renderScheduleForDay(dayIso) {
+      const root = document.getElementById('day-schedule');
+      const rows = calendarScheduleRows.filter((row) => toIsoDay(row.start_time) === dayIso);
+      const dayLabel = new Date(`${dayIso}T00:00:00`).toLocaleDateString('ru-RU', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+      if (!rows.length) {
+        root.innerHTML = `<p class="hint">${dayLabel}: тренировок нет.</p>`;
+        return;
+      }
+
+      root.innerHTML = `
+        <p class="item-title" style="margin-bottom:8px; text-transform:capitalize;">${dayLabel}</p>
+        <div class="timeline">
+          ${rows.map((row) => `
+            <div class="timeline-item">
+              <div class="timeline-time">${new Date(row.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+              <div>
+                <p class="item-title">${pulseSafe(row.workout_title)}</p>
+                <p class="item-sub">${pulseSafe(row.trainer_name)} · ${pulseSafe(row.occupied_slots)}/${pulseSafe(row.max_capacity)}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function collectDayFlags() {
+      const map = new Map();
+      calendarScheduleRows.forEach((row) => {
+        const day = toIsoDay(row.start_time);
+        map.set(day, { ...(map.get(day) || {}), hasSchedule: true });
+      });
+      return map;
+    }
+
+    function renderCalendars() {
+      const flagsMap = collectDayFlags();
+
+      renderDayStrip({
+        rootId: 'schedule-calendar',
+        title: 'Ряд дней',
+        subtitle: 'Темная кнопка: есть тренировка в этот день',
+        offsetDays: calendarState.scheduleOffset,
+        selectedDay: calendarState.selectedDay,
+        flagsMap,
+        onShift: (delta) => {
+          calendarState.scheduleOffset += delta * 7;
+          renderCalendars();
+        },
+        onSelectDay: (dayIso) => {
+          calendarState.selectedDay = dayIso;
+          renderCalendars();
+          renderScheduleForDay(dayIso);
+        },
+      });
+
+      renderScheduleForDay(calendarState.selectedDay);
+    }
+
+    async function loadOverview(clientId) {
+      selectedClientId = clientId;
+      const data = await pulseApi(`/api/client/${clientId}/overview`);
+      renderProfile(data.profile || {});
+      renderSubscription(data.active_subscription);
+      renderSessions(data.upcoming_sessions || []);
+      renderStats(data.stats || {});
+    }
+
+    async function loadScheduleOptions() {
+      const today = toIsoDay(new Date());
+      calendarScheduleRows = await pulseApi(`/api/schedule?date_from=${today}`);
+
+      const select = document.getElementById('schedule-select');
+      select.innerHTML = '';
+      calendarScheduleRows
+        .filter((row) => !row.is_cancelled)
+        .slice(0, 80)
+        .forEach((row) => {
+          const option = document.createElement('option');
+          option.value = row.schedule_id;
+          option.textContent = `${row.workout_title} · ${row.start_time} · ${row.occupied_slots}/${row.max_capacity}`;
+          select.appendChild(option);
+        });
+
+      if (!select.options.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Нет доступных слотов';
+        select.appendChild(option);
+      }
+    }
+
+    async function refreshAll() {
+      await loadOverview(selectedClientId);
+      await loadScheduleOptions();
+      renderCalendars();
+      pulseToast('Данные клиента обновлены');
+    }
+
+    (async () => {
+      const [lookup, memberships] = await Promise.all([
+        pulseApi('/api/lookups'),
+        pulseApi('/api/membership-types'),
+      ]);
+
+      const clientSelect = document.getElementById('client-select');
+      lookup.clients.forEach((client) => {
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = client.name;
+        if (String(client.id) === String(initialClientId)) option.selected = true;
+        clientSelect.appendChild(option);
+      });
+
+      const selected = clientSelect.value || initialClientId;
+      await loadOverview(selected);
+      await loadScheduleOptions();
+      calendarState.selectedDay = todayIso;
+      calendarState.scheduleOffset = 0;
+      renderCalendars();
+
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => setActivePane(btn.dataset.pane));
+      });
+
+      clientSelect.addEventListener('change', async (event) => {
+        try {
+          await loadOverview(event.target.value);
+          await loadScheduleOptions();
+          calendarState.selectedDay = todayIso;
+          calendarState.scheduleOffset = 0;
+          renderCalendars();
+          pulseToast('Профиль переключен');
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      const membershipSelect = document.getElementById('membership-select');
+      memberships.forEach((membership) => {
+        const option = document.createElement('option');
+        option.value = membership.membership_type_id;
+        option.textContent = `${membership.name} · ${pulseMoney(membership.price)}`;
+        membershipSelect.appendChild(option);
+      });
+
+      const userSelect = document.getElementById('user-select');
+      lookup.users.forEach((user) => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = `${user.name} (${user.role})`;
+        userSelect.appendChild(option);
+      });
+
+      const trainerSelect = document.getElementById('trainer-select');
+      lookup.trainers.forEach((trainer) => {
+        const option = document.createElement('option');
+        option.value = trainer.id;
+        option.textContent = `${trainer.name}`;
+        trainerSelect.appendChild(option);
+      });
+
+      document.getElementById('buy-subscription-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const btn = document.getElementById('buy-btn');
+        const msg = document.getElementById('buy-sub-msg');
+        btn.disabled = true;
+        btn.textContent = 'Оформляем...';
+        msg.textContent = '';
+
+        try {
+          const purchase = await pulseApi('/api/subscriptions', {
+            method: 'POST',
+            body: JSON.stringify({
+              client_id: selectedClientId,
+              membership_type_id: membershipSelect.value,
+              sold_by_staff_id: userSelect.value,
+              trainer_id: trainerSelect.value,
+              auto_book_schedule: document.getElementById('auto-book').checked,
+              is_paid: document.getElementById('is-paid').checked,
+            }),
+          });
+          msg.textContent = `Готово. Автосоздано тренировок: ${purchase.auto_booked ?? 0}`;
+          await refreshAll();
+          setActivePane('pane-calendar');
+        } catch (err) {
+          msg.textContent = err.message;
+          pulseToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Оформить';
+        }
+      });
+
+      document.getElementById('book-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const btn = document.getElementById('book-btn');
+        btn.disabled = true;
+        btn.textContent = 'Записываем...';
+        try {
+          const scheduleId = document.getElementById('schedule-select').value;
+          if (!scheduleId) throw new Error('Нет доступных слотов');
+
+          await pulseApi('/api/bookings', {
+            method: 'POST',
+            body: JSON.stringify({
+              client_id: selectedClientId,
+              schedule_id: scheduleId,
+            }),
+          });
+
+          pulseToast('Клиент записан на тренировку');
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Записать клиента';
+        }
+      });
+
+      document.getElementById('refresh-btn').addEventListener('click', async () => {
+        try {
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await pulseApi('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+    })().catch((err) => pulseToast(err.message, true));
+  </script>
+</body>
+</html>

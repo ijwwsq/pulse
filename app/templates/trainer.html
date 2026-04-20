@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse - Кабинет тренера</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/pulse.css" />
+</head>
+<body class="pulse-app mobile-app">
+  <main class="page-shell mobile-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1 class="font-display">Кабинет тренера</h1>
+        <p>{{ user.full_name if user else '' }} · группы, клиенты, контроль посещаемости</p>
+      </div>
+      <div class="toolbar">
+        <button id="refresh-btn" class="btn btn-primary">Обновить</button>
+        <button id="logout-btn" class="btn btn-ghost">Выход</button>
+      </div>
+    </header>
+
+    {% if error %}
+    <section class="card" style="border-color:var(--danger); color:var(--danger); margin-top:12px;">
+      <strong>Ошибка подключения:</strong> {{ error }}
+    </section>
+    {% endif %}
+
+    <section class="tabbar">
+      <button class="tab-btn active" data-pane="pane-trainer-overview">Обзор</button>
+      <button class="tab-btn" data-pane="pane-trainer-calendar">Календарь</button>
+      <button class="tab-btn" data-pane="pane-trainer-actions">Операции</button>
+    </section>
+
+    <section id="pane-trainer-overview" class="section-pane active">
+      <div class="two-col" style="margin-top:10px; align-items:start;">
+        <div class="grid">
+          <article class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
+              <h2 class="font-display">Профиль тренера</h2>
+              <select id="trainer-select" class="field" style="max-width:210px;"></select>
+            </div>
+            <div id="profile" class="list"></div>
+          </article>
+
+          <article class="card">
+            <h2 class="font-display">KPI по месяцам</h2>
+            <div id="performance" class="list"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <h2 class="font-display">Назначенные клиенты</h2>
+          <div id="client-schedule" class="timeline"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="pane-trainer-calendar" class="section-pane">
+      <article class="card" style="margin-top:10px;">
+        <h2 class="font-display">Расписание групп</h2>
+        <p class="hint">Кнопки кликабельные: темная кнопка = есть группа в этот день.</p>
+        <div id="trainer-calendar" class="calendar" style="margin-top:8px;"></div>
+        <div id="trainer-day-schedule" class="day-panel">
+          <p class="hint">Выбери день в ряду выше.</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="pane-trainer-actions" class="section-pane">
+      <div class="two-col" style="margin-top:10px; align-items:start;">
+        <article class="card">
+          <h2 class="font-display">Работа с клиентом</h2>
+          <form id="booking-form" class="form">
+            <select id="client-select" class="field" required></select>
+            <select id="schedule-select" class="field" required></select>
+            <button class="btn btn-primary" id="book-btn">Создать бронь</button>
+          </form>
+          <div class="form-inline" style="margin-top:10px;">
+            <button class="btn btn-accent" id="checkin-btn">Отметить посещение</button>
+            <button class="btn btn-ghost" id="refresh-classes-btn">Обновить слоты</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2 class="font-display">Финансовая операция (PT)</h2>
+          <form id="tx-form" class="form">
+            <input id="tx-amount" type="number" min="1" step="0.01" class="field" placeholder="Сумма, KZT" required />
+            <input id="tx-notes" class="field" placeholder="Комментарий" value="Операция из панели тренера" />
+            <button class="btn btn-primary" id="tx-btn">Провести транзакцию</button>
+          </form>
+          <p class="hint">Операция сохраняется как personal_training и привязывается к выбранному тренеру.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-stack" class="toast-stack"></div>
+
+  <script src="/static/pulse.js"></script>
+  <script>
+    const initialTrainerId = "{{ initial_trainer_id or '' }}";
+    let currentTrainerId = initialTrainerId;
+    let trainerClasses = [];
+
+    function toIsoDay(value) {
+      const d = new Date(value);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    const todayIso = toIsoDay(new Date());
+    const trainerCalendarState = {
+      selectedDay: todayIso,
+      offset: 0,
+    };
+
+    function setActivePane(paneId) {
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.pane === paneId);
+      });
+      document.querySelectorAll('.section-pane').forEach((pane) => {
+        pane.classList.toggle('active', pane.id === paneId);
+      });
+    }
+
+    function addDays(baseDate, days) {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + days);
+      return d;
+    }
+
+    function buildRollingDays(offsetDays, count = 16) {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() + offsetDays);
+      const days = [];
+      for (let i = 0; i < count; i += 1) {
+        const current = addDays(start, i);
+        days.push({
+          iso: toIsoDay(current),
+          dayNumber: current.getDate(),
+          weekShort: current.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '').slice(0, 2),
+        });
+      }
+      return days;
+    }
+
+    function renderDayStrip({ rootId, title, subtitle, offsetDays, selectedDay, flagsMap, onShift, onSelectDay }) {
+      const root = document.getElementById(rootId);
+      const days = buildRollingDays(offsetDays);
+      root.innerHTML = `
+        <div class="strip-head">
+          <div>
+            <p class="strip-title">${title}</p>
+            <p class="strip-sub">${subtitle}</p>
+          </div>
+          <div class="strip-controls">
+            <button type="button" class="strip-nav-btn" data-shift="-1">&#x2039;</button>
+            <button type="button" class="strip-nav-btn" data-shift="1">&#x203A;</button>
+          </div>
+        </div>
+        <div class="strip-row">
+          ${days.map((day) => {
+            const hasSchedule = Boolean((flagsMap.get(day.iso) || {}).hasSchedule);
+            const markerClass = hasSchedule ? 'marker-schedule' : 'marker-none';
+            const selectedClass = day.iso === selectedDay ? 'is-selected' : '';
+            return `
+              <button type="button" class="strip-btn ${markerClass} ${selectedClass}" data-day="${day.iso}">
+                <span class="strip-week">${day.weekShort}</span>
+                <span class="strip-num">${day.dayNumber}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      root.onclick = (event) => {
+        const nav = event.target.closest('button[data-shift]');
+        if (nav) {
+          onShift(Number(nav.dataset.shift || 0));
+          return;
+        }
+        const dayBtn = event.target.closest('button.strip-btn[data-day]');
+        if (dayBtn) {
+          onSelectDay(dayBtn.dataset.day);
+        }
+      };
+    }
+
+    function renderProfile(profile) {
+      document.getElementById('profile').innerHTML = `
+        <div class="item"><p class="item-title">Имя</p><p class="item-sub">${pulseSafe(profile.full_name)}</p></div>
+        <div class="item"><p class="item-title">Категория</p><p class="item-sub">${pulseSafe(profile.qualification_lvl)}</p></div>
+        <div class="item"><p class="item-title">Ставка за сессию</p><p class="item-sub">${pulseSafe(profile.rate_per_session)}</p></div>
+        <div class="item"><p class="item-title">Специализации</p><p class="item-sub">${pulseSafe(profile.specializations)}</p></div>
+      `;
+    }
+
+    function renderPerformance(rows) {
+      const root = document.getElementById('performance');
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">Нет данных KPI</div>';
+        return;
+      }
+      root.innerHTML = rows.map((row) => {
+        const load = Number(row.avg_occupancy_rate_percent || 0);
+        return `
+          <div class="item">
+            <p class="item-title">${pulseSafe(row.period_month)}</p>
+            <p class="item-sub">Занятий: ${pulseSafe(row.classes_conducted)} · Клиентов: ${pulseSafe(row.total_clients_attended)}</p>
+            <div class="progress-line" style="margin-top:8px;"><span style="width:${Math.min(load, 100)}%"></span></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderClientSchedule(rows) {
+      const root = document.getElementById('client-schedule');
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">Назначений пока нет</div>';
+        return;
+      }
+      root.innerHTML = rows.map((row) => `
+        <div class="timeline-item">
+          <div class="timeline-time">${new Date(row.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div>
+            <p class="item-title">${pulseSafe(row.client_name)} <span class="badge">${pulseSafe(row.status)}</span></p>
+            <p class="item-sub">${pulseSafe(row.title)} · ${pulseSafe(row.room_name)}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderClassesForDay(dayIso) {
+      const root = document.getElementById('trainer-day-schedule');
+      const rows = trainerClasses.filter((row) => toIsoDay(row.start_time) === dayIso);
+      const dayLabel = new Date(`${dayIso}T00:00:00`).toLocaleDateString('ru-RU', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+      if (!rows.length) {
+        root.innerHTML = `<p class="hint">${dayLabel}: у тренера нет групп.</p>`;
+        return;
+      }
+
+      root.innerHTML = `
+        <p class="item-title" style="margin-bottom:8px; text-transform:capitalize;">${dayLabel}</p>
+        <div class="timeline">
+          ${rows.map((row) => `
+            <div class="timeline-item">
+              <div class="timeline-time">${new Date(row.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+              <div>
+                <p class="item-title">${pulseSafe(row.title)} <span class="badge">${pulseSafe(row.occupied_slots)}/${pulseSafe(row.max_capacity)}</span></p>
+                <p class="item-sub">${pulseSafe(row.room_name)}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderTrainerCalendar() {
+      const flagsMap = new Map();
+      trainerClasses.forEach((row) => {
+        const day = toIsoDay(row.start_time);
+        flagsMap.set(day, { ...(flagsMap.get(day) || {}), hasSchedule: true });
+      });
+
+      renderDayStrip({
+        rootId: 'trainer-calendar',
+        title: 'Ряд дней: группы',
+        subtitle: 'Темная кнопка означает наличие группы',
+        offsetDays: trainerCalendarState.offset,
+        selectedDay: trainerCalendarState.selectedDay,
+        flagsMap,
+        onShift: (delta) => {
+          trainerCalendarState.offset += delta * 7;
+          renderTrainerCalendar();
+        },
+        onSelectDay: (dayIso) => {
+          trainerCalendarState.selectedDay = dayIso;
+          renderTrainerCalendar();
+          renderClassesForDay(dayIso);
+        },
+      });
+
+      renderClassesForDay(trainerCalendarState.selectedDay);
+    }
+
+    async function loadTrainer(trainerId) {
+      currentTrainerId = trainerId;
+      const data = await pulseApi(`/api/trainer/${trainerId}/overview`);
+      trainerClasses = data.upcoming_classes || [];
+      renderProfile(data.profile || {});
+      renderPerformance(data.performance || []);
+      renderClientSchedule(data.assigned_client_schedule || []);
+
+      trainerCalendarState.selectedDay = todayIso;
+      trainerCalendarState.offset = 0;
+      renderTrainerCalendar();
+
+      const scheduleSelect = document.getElementById('schedule-select');
+      scheduleSelect.innerHTML = '';
+      trainerClasses.forEach((row) => {
+        const option = document.createElement('option');
+        option.value = row.schedule_id;
+        option.textContent = `${row.title} · ${row.start_time} · ${row.occupied_slots}/${row.max_capacity}`;
+        scheduleSelect.appendChild(option);
+      });
+
+      if (!scheduleSelect.options.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Нет доступных групп';
+        scheduleSelect.appendChild(option);
+      }
+    }
+
+    async function refreshAll() {
+      await loadTrainer(currentTrainerId);
+      pulseToast('Панель тренера обновлена');
+    }
+
+    (async () => {
+      const lookup = await pulseApi('/api/lookups');
+      const trainerSelect = document.getElementById('trainer-select');
+      const clientSelect = document.getElementById('client-select');
+
+      lookup.trainers.forEach((trainer) => {
+        const option = document.createElement('option');
+        option.value = trainer.id;
+        option.textContent = trainer.name;
+        if (String(trainer.id) === String(initialTrainerId)) option.selected = true;
+        trainerSelect.appendChild(option);
+      });
+
+      lookup.clients.forEach((client) => {
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = client.name;
+        clientSelect.appendChild(option);
+      });
+
+      const selected = trainerSelect.value || initialTrainerId;
+      await loadTrainer(selected);
+
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => setActivePane(btn.dataset.pane));
+      });
+
+      trainerSelect.addEventListener('change', async (event) => {
+        try {
+          await loadTrainer(event.target.value);
+          pulseToast('Тренер переключен');
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('booking-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const btn = document.getElementById('book-btn');
+        btn.disabled = true;
+        btn.textContent = 'Создаем...';
+
+        try {
+          const scheduleId = document.getElementById('schedule-select').value;
+          if (!scheduleId) throw new Error('Нет доступных групп');
+
+          await pulseApi('/api/bookings', {
+            method: 'POST',
+            body: JSON.stringify({
+              client_id: clientSelect.value,
+              schedule_id: scheduleId,
+            }),
+          });
+
+          pulseToast('Бронь создана');
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Создать бронь';
+        }
+      });
+
+      document.getElementById('checkin-btn').addEventListener('click', async () => {
+        try {
+          const scheduleId = document.getElementById('schedule-select').value;
+          if (!scheduleId) throw new Error('Нет выбранного занятия');
+
+          await pulseApi('/api/check-in', {
+            method: 'POST',
+            body: JSON.stringify({
+              client_id: clientSelect.value,
+              schedule_id: scheduleId,
+            }),
+          });
+
+          pulseToast('Посещение отмечено');
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('tx-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const btn = document.getElementById('tx-btn');
+        btn.disabled = true;
+        btn.textContent = 'Проводим...';
+
+        try {
+          await pulseApi('/api/transactions', {
+            method: 'POST',
+            body: JSON.stringify({
+              client_id: clientSelect.value,
+              staff_id: currentTrainerId,
+              service_type: 'personal_training',
+              amount: Number(document.getElementById('tx-amount').value),
+              payment_status: 'paid',
+              notes: document.getElementById('tx-notes').value,
+            }),
+          });
+
+          pulseToast('Транзакция сохранена');
+          document.getElementById('tx-amount').value = '';
+        } catch (err) {
+          pulseToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Провести транзакцию';
+        }
+      });
+
+      document.getElementById('refresh-btn').addEventListener('click', async () => {
+        try {
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('refresh-classes-btn').addEventListener('click', async () => {
+        try {
+          await refreshAll();
+        } catch (err) {
+          pulseToast(err.message, true);
+        }
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await pulseApi('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+    })().catch((err) => pulseToast(err.message, true));
+  </script>
+</body>
+</html>

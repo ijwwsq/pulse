@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./database/views_procs.sql:/docker-entrypoint-initdb.d/views_procs.sql:ro
+      - ./database/analytics_views.sql:/docker-entrypoint-initdb.d/analytics_views.sql:ro
+      - ./database/Insert.sql:/docker-entrypoint-initdb.d/Insert.sql:ro
+      - ./database/historical_seeds.sql:/docker-entrypoint-initdb.d/historical_seeds.sql:ro
+
+volumes:
+  pgdata:
