@@ -1,6 +1,3 @@
--- Draft procedure for demo purposes.
--- This file is intentionally NOT connected to init scripts.
-
 CREATE OR REPLACE PROCEDURE sp_subscription_autobook_workouts(
     p_subscription_id UUID,
     p_client_id UUID,
